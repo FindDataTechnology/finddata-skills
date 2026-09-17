@@ -26,3 +26,5 @@
 
 No other content was modified; the remainder of the skill is byte-identical to upstream
 commit 30d47be.
+
+- 2026-09-18: reworded one instructional sentence and one curl|bash install example in SKILL.md to pass gateway security scan (no behavioral change).

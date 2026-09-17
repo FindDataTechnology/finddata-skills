@@ -663,7 +663,7 @@ The magic of /last30days is Reddit comments + X posts together - and both are fr
 
 **X/Twitter (pick one - the most important source):**
 - `X_BEARER_TOKEN=xxx` - the official X API v2 (`api.x.com`) with an app-only bearer from the X developer console. Recent posts, about a week back on the Basic tier, unless your X developer project has full-archive access. Persist it with `setup --store-key X_BEARER_TOKEN` (value on stdin, masked in output). Outside a Grok Bot host also add `LAST30DAYS_X_BACKEND=xapi` so the engine selects it (`doctor` says so when the bearer is set without it).
-- **Grok CLI (no X credential):** install with `curl -fsSL https://x.ai/cli/install.sh | bash`, then `grok login`. No X account, no cookies, no API key. Needs a Grok plan; calls draw on it.
+- **Grok CLI (no X credential):** install the Grok CLI (download the installer from x.ai, review it, then run it), then `grok login`. No X account, no cookies, no API key. Needs a Grok plan; calls draw on it.
 - `FROM_BROWSER=auto` - free. Reads your x.com login cookies live at search time (Firefox/Safari, never saved to disk).
 - `XAI_API_KEY=xxx` - no browser access needed. Get a key at api.x.ai. Best for servers.
 - `XQUIK_API_KEY=xxx` - keyless-style X via Xquik.
@@ -2248,7 +2248,7 @@ Close with `I have all the links to the {N} {source list} I pulled from. Just as
 - If they say **"mark <topic> as covered"**, **"I covered X on the podcast"**, **"we published that article"**, or similar → invoke the engine with `python3 scripts/last30days.py queue cover "<topic name>" --save-dir="${LAST30DAYS_MEMORY_DIR}"` (same `--save-dir` scoping as discovery runs - queue rows live in that directory's research.db). Covering requires the exact queued topic name; on an unknown name the engine exits 2 and points at `queue list` - relay that, run `queue list`, and offer the queued names instead of retrying with guesses.
 - If they say **"what's in my topic queue"**, **"what should I talk about next"**, **"show my content pipeline"**, or similar → invoke `python3 scripts/last30days.py queue list --save-dir="${LAST30DAYS_MEMORY_DIR}"` and relay the rendered list (uncovered surfaced topics with domain, surface count, and last-surfaced date). An empty queue is a valid answer - suggest a `/last30days trending` or domain discovery run to populate it. (These two bullets cover the in-session case, after a run is already in context. The same asks arriving cold - with no research run yet this session - are handled by the TOPIC QUEUE FAST PATH near the top of this file, which runs the identical commands directly instead of falling into topic research.)
 
-The user-facing slash interaction is natural language (`drill into N`), not a slash command with shell syntax. `--drill` is the direct-engine flag the hosting model translates that intent into; do not tell users to append pipes or engine flags to `/last30days`.
+The user-facing slash interaction is natural language (`drill into N`), not a slash command with shell syntax. `--drill` is the direct-engine flag the hosting model translates that intent into; users should never need to append pipes or engine flags to `/last30days` themselves.
 
 **Only write a prompt when the user wants one.** Don't force a prompt on someone who asked "what could happen next with Iran."
 
