@@ -227,6 +227,8 @@ FinRL-X 明确移除了三个与既有因子线性等价的条目。**不要以"
 | 通道 A 未连接 | 明示"财报数据源未连接"，只交付因子清单与口径，不产出任何因子值；标注"以下为框架，未经在线核实" |
 | 通道 B 未连接或该标的未播种 | 9 个价格依赖的受限因子（7 个估值 + `debt_to_mktcap` + `dividend_yield`）整体标"不可算（价格通道未就绪）"；其余因子照常，**不得调外部行情 API 绕过** |
 | 某个条件档因子缺科目 | 该因子对该标的置空，写明缺的科目名；不得用相邻科目替代，不得填 0 |
+| **该因子的指标规则是 `source_type: external`** | **实测（2026-10-18）：`fd-cn-report` 的 444 条规则里有 12 条（`PE-TTM`/`PB`/`PS-TTM`/`ev_multiple` 等）是 `external`，本地返回 `value: null`，原文「external source — not extractable from report」。这些因子对全部标的置空并整体退出打分，不得用手边价格 ÷ 手边 EPS 冒充**——技能要求估值因子的 EPS 用 TTM，而 `get_financials` 只给单期年报，手算出来的不是同一个口径 |
+| **金融类公司无毛利** | `compute_profitability` 会原子拒绝，原文「fundamentals is missing required field 'gross_profit' (or, as an alternative, 'cost_of_goods_sold')」。处置：`gross_margin`/`operating_margin` 标"不适用（金融业）"（与"缺失"分开写）；净利率走 `compute_dupont.factors.net_margin`，并在输出里说明它来自杜邦分解而非利润表单算 |
 | 某期财报缺披露日 | 该期按"不可用"处理，因子在该期降级；不得假设期末即已披露 |
 | 该标的所处行业无该科目（如金融业无存货） | 因子标"不适用"，与"缺失"分开写；不得把不适用写成 0 |
 | 用户要求清单外的因子 | 明示"不在 52 因子清单内"，给出最接近的清单内因子并说明差异；不新增条目 |
