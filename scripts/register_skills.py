@@ -85,13 +85,40 @@ def load_description(category: str, name: str) -> tuple[str, str | None]:
 
 def main() -> int:
     token = json.load(open(TOKEN_PATH))["tokens"]["access_token"]
-    status, existing = api("GET", "/api/skills", token)
-    if status != 200:
-        print(f"FATAL: GET /api/skills -> {status}: {existing}")
+
+    def all_skills() -> tuple[set[str], list[dict]]:
+        """分页取全量（names, items）。
+
+        **必须翻页**：`GET /api/skills` 默认只回 20 条（2026-10-17 实测
+        `total_count=212`、`limit=20`）。只读第一页会把"已注册"误判成"缺失"，
+        触发对既有技能的重提交，而 verification 又用同一份残缺列表，
+        报出与事实相反的结果。
+
+        返回 (names, items)：names 供判重/verification，items 供 --rescan
+        拼 security-scan URL（该分支要 s["path"]，光有名字集不够）。
+        """
+        names: set[str] = set()
+        items: list[dict] = []
+        offset = 0
+        while True:
+            st, page = api("GET", f"/api/skills?limit=100&offset={offset}", token)
+            if st != 200:
+                raise RuntimeError(f"GET /api/skills -> {st}: {page}")
+            rows = page if isinstance(page, list) else (page.get("skills") or [])
+            items.extend(rows)
+            names.update(s.get("name") for s in rows if s.get("name"))
+            if isinstance(page, dict) and page.get("has_next") and rows:
+                offset += len(rows)
+                continue
+            break
+        return names, items
+
+    try:
+        known, _ = all_skills()
+    except RuntimeError as exc:
+        print(f"FATAL: {exc}")
         return 1
-    items = existing if isinstance(existing, list) else existing.get("skills", [])
-    known = {s.get("name") for s in items}
-    print(f"existing skills on gateway: {len(known)} -> {sorted(known)}")
+    print(f"existing skills on gateway: {len(known)}")
 
     results = []
     for category, name, tags, version in SKILLS:
@@ -115,9 +142,7 @@ def main() -> int:
         results.append({"name": name, "status_code": st, "path": (body or {}).get("path") if isinstance(body, dict) else None})
 
     # verify
-    st, after = api("GET", "/api/skills", token)
-    after_items = after if isinstance(after, list) else after.get("skills", [])
-    after_names = {s.get("name") for s in after_items}
+    after_names, after_items = all_skills()
     missing = [n for _, n, _, _ in SKILLS if n not in after_names]
     print(f"\nverification: {len(SKILLS) - len(missing)}/{len(SKILLS)} registered; missing={missing or 'none'}")
 
