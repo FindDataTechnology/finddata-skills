@@ -7,7 +7,7 @@ description: 柏讯投委会 · 裁决（入口技能）。当用户要求"开�
   source_repo: https://github.com/AI4Finance-Foundation/FinRobot + https://github.com/TradeAgents/TradingAgents（TradingAgents 为 Tauric Research 开源项目）
   source_skill: FinRobot finrobot_desktop/finrobot/engine/agents/instructions/judge_agent.md（IC chair 的字段与铁律："Must not cite numbers"；call/conviction/swing_factor/change_my_mind 字段设计）+ TradingAgents graph/conditional_logic.py 与 agents/manager/research_manager.py（"conflict alone is not a reason to Hold"——冲突本身不是 Hold 的理由；ResearchPlan 五档评级）
   source_license: Apache-2.0 / Apache-2.0（仅适用于上列借鉴点；本稿正文为原生文本）
-  data_binding: 通道 Q（fd-quant 计算面，本技能唯一可调用通道）—— 落账与结算走账本四工具：mcp__fd-quant__record_decision（payload=Rating 契约对象，幂等键 as_of+symbol+pack+skill）/ mcp__fd-quant__retrieve_decisions（点内检索，只回结算日 ≤ as_of）。校验 Rating 契约合法性可直接以 check_rating 语义自查（字段/枚举/悬空引用由账本侧再拦）。通道 A/B 不由本技能调用（立论阶段已封口）；本技能同样不取数、不计算。
+  data_binding: 通道 Q（fd-quant 计算面，本技能唯一可调用通道）—— 落账与查回走账本工具：mcp__fd-quant__record_decision（payload=Rating 契约对象，幂等键 as_of+symbol+pack+skill）/ mcp__fd-quant__retrieve_decisions（点内检索，只回结算日 ≤ as_of）/ mcp__fd-quant__settle_decision（由 P5 复盘套件调用，本技能不结算——价格序列由结算方传入，账本不取数）。**契约校验没有独立 MCP 入口**：fd-quant 的 50 工具面里只有账本这几个工具，没有 check_rating/validate——合法性由本稿自查表 + 落账时 record_decision 内部校验双重保证，不得宣称"已过契约校验工具"。通道 A/B 不由本技能调用（立论阶段已封口）；本技能同样不取数、不计算。
   改述说明：原生编写。借 FinRobot judge_agent.md 的三条——裁决者不得引用数字（评议论证质量，不当第三个分析师）、change_my_mind 字段、call/conviction 输出语义；借 TradingAgents research_manager 的"冲突不是 Hold 的理由"与五档评级。上游两家的裁决均无结算闭环（TradingAgents memory 是 markdown 日志、FinRobot 前端明写 IC-debate 特性已删除不得复活），本稿把裁决接入决策账本——结论可被结算，"辩论是否更准"由账本数据回答。
 -->
 
@@ -76,6 +76,8 @@ change_my_mind 与账本结算互补：这里写**逻辑上**的可证伪点，�
 
 裁决前对两份立论稿执行，结果写进分歧点摘要之后：
 
+**§2.0 证据集合并规则（多档来源必做，先于一切核对）**：本套件不提供证据集 merge 工具，`evidence_id` 无全局唯一性约束来源——档 1（P3 产出）与档 2（用户材料）合并成一份证据集时，两份可能撞同一个 id，而这一步只能靠文本比对。所以合并时必须显式做一次**撞 id处理**：把全部 id 列成一张表，出现重复就**保留先出现的一条、其余加来源后缀区分**（如 `<ev_rev_fy2025>` 与 `<ev_rev_fy2025__user>`），并在裁决正文首段写明「本次证据集合并时重命名了 N 个撞 id 条目（列名字）」。**不得静默保留两条同名不同值的证据**——那会让"引用可解"变成假可解：id 解得出来，但解得是哪一条不确定。档 3 与档 1/2 合并同理。
+
 1. **证据引用清单核对**：双方稿末的 `evidence_id → label → as_of → source` 全表，逐个 id 核对是否在证据集中存在。
 2. **不可解引用处置**：立论稿中引用了证据集外 id 的论证段——按其稿内规则该段已自报作废；裁决侧复核"作废声明"是否诚实（有无悄悄换数保论点）。复核发现换数 → 该方整稿信誉降级，在其所有分歧点评议中作为依据记入。
 3. **对方发言后的复述忠实度**：空头稿对多头论点的复述逐条回对多头原文——数值、期别、限定条件三处，失真即在对应分歧点记弱。
@@ -117,6 +119,13 @@ change_my_mind 与账本结算互补：这里写**逻辑上**的可证伪点，�
 - **重出机制**：立论稿违其稿内硬约束（引不可解 id 未自报、替对手立论、复述失真）→ 要求该方**整段重出**，裁决者**不得代为删改立论稿**——你调度质量，不代写论证。
 - **一轮为限**：v1 是"双方立论 + 裁决"的单轮程序，不做多轮循环（TradingAgents 的计数器循环属升级形态）。
 - **不替任何一方补充论据**：两份立论稿的缺口就是缺口，裁决不得用"其实还有个利好"给多头补刀——那是替对手立论。
+
+**两个无法机器校验的项，给可操作判定口径**（tasks 5.4/5.6 的验证依据）：
+
+| 无法自动校验的项 | 为什么要口径 | 可操作判定口径 |
+|---|---|---|
+| 空头复述忠实度（"不扭曲多头证据"） | 只能人读，无夹具 | 逐条回对多头原文的**数值、期别、限定条件**三处；任一处失真即在对应分歧点记弱，并在分歧点摘要里写明"失真的是哪一条、原文值与复述值"。失真 ≥ 2 条时该方整稿信誉降级 |
+| "空头论证为空"是否已尽力（tasks 5.6 的口径空白） | spec 未定义什么算"尽力找过" | 裁决必须核对空头稿的**证据集盘点是否覆盖了全部条目**：盘点漏掉的证据条目数 > 0 → 不算已尽力，要求空头稿重出；漏掉 0 条且仍立不出 → 空头论证为空是合法产出。此时按"单方论证"降级：`conviction` 按证据强度给但**不得超过 0.5**，并在 `basis` 写明"空头未提出有效反证（已核对证据集盘点覆盖全部条目）" |
 
 ---
 
