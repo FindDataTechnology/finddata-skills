@@ -49,6 +49,27 @@ FindData 精选 agent 技能库：经济、金融与通用数据分析。每个�
 | statsmodels | 计量经济学（OLS/GLM/ARIMA 推断） | k-dense-ai/scientific-agent-skills |
 | statistical-analysis | 统计检验选择与 APA 报告 | k-dense-ai/scientific-agent-skills |
 
+### platform-ops/ — 平台运营（1）
+| 技能 | 说明 | 上游 |
+|---|---|---|
+| xingyan-publish | 发布文章/教程到寻数·星研（canonical 起草→脱敏机检→CMS 录入→官网构建链） | 自研 |
+
+
+## 本地安装（ZCode / Claude Code 适配）
+
+仓库技能是**真源**，本地使用用安装器同步到各 agent 的技能目录（全部 agent 读同一
+开放 SKILL.md 格式，无需改内容）：
+
+```sh
+python3 scripts/install_local.py            # 全量同步到 ~/.zcode/skills、~/.agents/skills、~/.claude/skills
+python3 scripts/install_local.py --list     # 列出可安装技能
+python3 scripts/install_local.py --only xingyan-publish   # 只装一个
+```
+
+- 目标目录：ZCode=`~/.zcode/skills`（及 `~/.agents/skills`）；Claude Code=`~/.claude/skills`。
+- 幂等：内容一致不覆盖；`--force` 强制重拷。安装副本带真源指针横幅——**改技能改仓库，再跑安装器**。
+- MCP Gateway 注册（agent 在线调用面）另见 `scripts/register_skills.py`。
+
 ## 未收录（及原因）
 
 - gracefullight/stock-checker（stock-analysis 8 维版）— 仓库无 LICENSE，不能再分发；本机已另行安装
