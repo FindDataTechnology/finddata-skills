@@ -33,22 +33,38 @@ description: "把文章/教程发布到寻数·星研内容平台：星研 canon
 
 ### 腿 2 · CMS 录入（推荐主路径：CMS 是真源）
 
-凭据：应急本地账号 `xingyan-admin@finddatatech.cloud`（Editor，可发布）——密码在 cheap-1 `/opt/fd-strapi/.admin-credentials`（`ssh fd-deploy` 即 cheap-1；或用浏览器 SSO `aloadtree@gmail.com` 走 UI）。**程序化 REST 配方（实测可用）**：
+凭据：应急本地账号 `xingyan-admin@finddatatech.cloud`（Editor，可发布）——密码在 cheap-1 `/opt/fd-strapi/.admin-credentials`（`ssh cheap1` 读取；`ssh fd-deploy` 上**没有**；或用浏览器 SSO `aloadtree@gmail.com` 走 UI）。**程序化 REST 配方（实测可用）**：
 
 ```python
 # POST {BASE}/admin/login {"email","password"} → data.token
 # 建 zh 草稿：POST {BASE}/content-manager/collection-types/api::course.course?locale=zh
-#   body: {slug,title,summary,order,level,updated,pack_url,source_material,body}   # body=markdown 源文本
+#   body: {slug,title,summary,order,level,updated,pack_url,source_material,body}
+#   ⚠️ 字段值存裸文本（不带引号）；body=正文源文本，【不带 frontmatter】——
+#      官网 fetch-strapi 的 serializeAcademy 会从字段重新生成 frontmatter
 # 发布：POST .../api::course.course/{documentId}/actions/publish?locale=zh
 # 建 en 变体：POST 同端点?locale=en，data 里【必须】显式带 documentId=zh的documentId
 #   + 全部非本地化字段（slug/order/level/pack_url 等，document service 不自动复制）→ 发布同款
 # 幂等：先 GET ?locale=*&filters[$and][0][slug][$eq]=<slug> 判存在
+# 验发布态：集合列表接口看 `status` 字段（publishedAt 恒为 null，别用它判）
 ```
 
 - 三集合端点：`api::briefing.briefing` / `api::course.course` / `api::research-article.research-article`。
 - 非本地化共享字段：`slug`/`date`/`kind`/`order`/`pack_url`；随语言变：`title/summary/tags/sources/source_material/body`。
 - 发布闸会拦内部标识（400 + 命中行报文）；发布前自己先跑过 xingyan 机检就不会撞。
 - 验证：admin `GET /content-manager/collection-types/api::course.course/{documentId}?locale=*`（单文档路径不接 `*`，逐 locale 查或用集合列表）。
+
+**图文课程的图片上传（2026-10-25 实测）**：这台 Strapi 5 的媒体库 admin 路由挂在 **`/upload`**，不是
+`/admin/upload`（后者 405——`/admin/*` 全是 admin SPA 兜底，GET 200 是假象）：
+
+```python
+# POST {BASE}/upload  multipart 字段名 files, 头 Authorization: Bearer <admin JWT>
+# → 返回文件对象数组，url 形如 /uploads/<名>_<hash>.png（公网可直接 GET 200）
+# CMS 正文引图用绝对 URL https://cms.finddatatech.cloud/uploads/<file>；
+# canonical 仓内用相对路径 media/<slug>/<file>，发布时再替换成 CMS 绝对 URL。
+```
+
+- 图文课程已获官网门支持：`check-content-integrity.mjs` 对**纯图片定义行**（`![alt](url)` 独占一行）
+  整行豁免 use 层规则（prose+图同行仍拦）——官网仓 6ae73a3；CMS 托管截图不再触发 tech-identifier。
 
 ### 腿 3 · 官网站内呈现
 
@@ -75,6 +91,9 @@ CMS 是真源后**不需要**手动改官网仓：官网 `npm run build` 第一�
 | 发布 400 带命中行 | CMS 发布闸机检（fail-closed） | 按行改写重发；与 xingyan 机检同源 |
 | 找不到官网部署在哪 | 生产=chengsi k3s `fd-web/official-web`（NodePort 30442←宿主 nginx←EdgeOne），**不在** cheap 集群 | `kubectl --context tencent -n fd-web`；ssh 别名 `fd-deploy`（124.220.7.175，ubuntu） |
 | 公开读 CMS API 403 | 生产未开公开 find（正确姿态） | 走只读 API token（官网构建侧已配）或 admin JWT |
+| `POST /admin/upload` 405 | 这台 Strapi 5 媒体库路由在 **`/upload`**；`/admin/*` 全是 SPA 兜底 | `POST {BASE}/upload` multipart 字段 `files` + admin JWT；见腿 2 |
+| 字段里出现 `\"…\"` 双引号壳 | frontmatter 解析时没剥引号就入库 | 字段值一律裸文本入库（官网序列化器会自己加引号） |
+| 页面顶部出现第二块 frontmatter | `body` 字段里带了 frontmatter | body 只放正文；frontmatter 由官网 fetch 从字段生成 |
 
 ## 写作纪律速记（详见 xingyan/README.md）
 
