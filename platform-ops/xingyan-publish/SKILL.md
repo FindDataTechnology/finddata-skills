@@ -68,16 +68,26 @@ description: "把文章/教程发布到寻数·星研内容平台：星研 canon
 
 ### 腿 3 · 官网站内呈现
 
-CMS 是真源后**不需要**手动改官网仓：官网 `npm run build` 第一步 `strapi:fetch` 自动从 CMS 拉 md（构建机 `/opt/fd/fd-web-build.env` 已注入 `STRAPI_URL`+`STRAPI_READ_TOKEN`）。
-只有两种情况才动官网仓：改站点代码/样式；CMS 尚未启用前的心急直发（手写 md 进 `src/content/<分区>/{zh,en}/`——注意下次 fetch 会按 CMS 重生成归一，**长期以 CMS 为准**）。官网仓提交纪律：只 add 自己的文件；`git push origin main`（origin 双推 github+gitee）。
+**先说清一件事（2026-10-26 实测更正，此前的"自动拉取"说法不成立）**：官网**镜像构建不拉 CMS**——`Dockerfile` 的 build 阶段没有传 `STRAPI_URL`/`STRAPI_READ_TOKEN`，`strapi:fetch` 见 `STRAPI_URL` 未设置就走「仓内快照」分支。所以 **CMS 发布完，官网不会自动出现**：必须把同一份 md 落到官网仓 `src/content/<分区>/{zh,en}/`，再走腿 4。（本机想验「在线拉取能拿到」可手动 `STRAPI_URL=https://cms.finddatatech.cloud npm run strapi:fetch`，但公开读默认 403——生产未开公开 find，是正确姿态；别把 403 当"内容没发布"。）
+
+| 情况 | 做法 |
+| --- | --- |
+| 日常发内容 | CMS 发布（腿 2）→ **把同一份 md 复制到官网仓 `src/content/<分区>/{zh,en}/`** → 腿 4 |
+| 改站点代码/样式 | 直接改官网仓 |
+| 官网页面 404 / 列表没新条目 | 检查快照有没有落（最常见原因就是这个） |
+
+官网仓提交纪律：
+- **只 add 自己的文件**——树上常有并行会话的改动（`src/data/*.json` 抓取产物等），勿 `-A`。
+- **两个远端：`origin`=GitHub，`gitee`=gitee**。image workflow 只监听 GitHub 的 `push: [main]`——**只推 gitee 不会出片**，两个都得推。
+- 远端有并行提交：`git stash -u` → `git rebase github/main` → 推 github → `git push gitee HEAD:main --force`（rebase 改写历史，gitee 落后需 force）。
 
 ### 腿 4 · 出片滚版与验证
 
-1. 官网镜像：`gh run list -R FindDataTechnology/fd-official-web` 看 `image` workflow（push main 触发；tag=commit 7 位短 sha）。
+1. 官网镜像：`gh run list -R FindDataTechnology/fd-official-web` 看 `image` workflow（push **GitHub** main 触发；tag=commit 7 位短 sha）。
 2. relay：`ssh cheap3 '/usr/local/bin/tcr-relay-sync.sh'`，日志 grep `fd-web/official-web:sha-<tag>` OK。
 3. bump：官网仓 `deploy/k8s/fd-web.yaml` 的 image 行 → 新 sha，commit 推 gitee（ArgoCD 源）。
-4. 滚：生产=chengsi k3s（`kubectl --context tencent -n fd-web`，别去 cheap 集群找）；`rollout status deploy/official-web`。
-5. 验证（防假阴性三层）：pod 内产物 `exec ... grep <内容标记> /usr/share/nginx/html/<路径>/index.html` → 源站直查 `ssh fd-deploy 'curl -s http://127.0.0.1:30442/<路径>/'` → 公网（EdgeOne 缓存 max-age=300 起，可能更久；`curl -sI` 看 `eo-cache-status`，MISS=刚回源）。
+4. 滚：生产=chengsi k3s（`kubectl --context tencent -n fd-web`，别去 cheap 集群找）；ArgoCD 应用名 `fd-web`：`kubectl --context tencent -n argocd annotate application fd-web argocd.argoproj.io/refresh=hard --overwrite`，等 `status.sync.revision` == 新 commit（首刷常不拾取），再 `rollout status deploy/official-web`。
+5. 验证（防假阴性三层）：pod 内产物 `exec ... grep <内容标记> /usr/share/nginx/html/<分区>/<路径>/index.html`（**英文页在无语言前缀的根路径**，中文在 `/zh/…`）→ 源站直查 `ssh fd-deploy 'curl -s http://127.0.0.1:30442/<路径>/'` → 公网（EdgeOne 缓存 max-age=300 起，可能更久；`curl -sI` 看 `eo-cache-status`，MISS=刚回源）。
 
 ## 已踩坑速查
 
@@ -94,6 +104,11 @@ CMS 是真源后**不需要**手动改官网仓：官网 `npm run build` 第一�
 | `POST /admin/upload` 405 | 这台 Strapi 5 媒体库路由在 **`/upload`**；`/admin/*` 全是 SPA 兜底 | `POST {BASE}/upload` multipart 字段 `files` + admin JWT；见腿 2 |
 | 字段里出现 `\"…\"` 双引号壳 | frontmatter 解析时没剥引号就入库 | 字段值一律裸文本入库（官网序列化器会自己加引号） |
 | 页面顶部出现第二块 frontmatter | `body` 字段里带了 frontmatter | body 只放正文；frontmatter 由官网 fetch 从字段生成 |
+| CMS 发布了但官网没新课程 | **镜像构建不拉 CMS**（Dockerfile 未传 `STRAPI_URL`）→ 走仓内快照 | 把同一份 md 复制进官网仓 `src/content/<分区>/{zh,en}/` 再出片（见腿 3） |
+| `git push` 成功但 image workflow 没跑 | 只推了 gitee；该仓 `origin`=GitHub，workflow 只监听 GitHub 的 push | 两个远端都推；`git ls-remote origin main` 对拍 commit |
+| 本机 `strapi:fetch` 报 403 | 生产未开公开 find（正确姿态） | 不是内容问题；验内容用 admin JWT 或直接看 CMS 后台 |
+| CMS 集合视图 `locale=*` 里 en 显示 `modified` | 跨语言聚合视图的展示差异，非真实草稿态 | 判发布态用**单 locale** 视图（`?locale=en`），那里 status 才是真值 |
+| 英文课程页 404 | 英文是默认语言，**走无前缀根路径**（`/research/academy/<slug>/`），中文在 `/zh/…` | 按语言换路径验；别以为没生成 |
 
 ## 写作纪律速记（详见 xingyan/README.md）
 
