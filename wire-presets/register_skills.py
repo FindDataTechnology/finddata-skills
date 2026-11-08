@@ -51,6 +51,11 @@ SKILLS = [
     ("decision-review-settlement", ["wire", "复盘", "结算", "finddata"]),
     ("decision-review-reflection", ["wire", "复盘", "反思", "finddata"]),
     ("decision-review-portfolio", ["wire", "复盘", "持仓", "finddata"]),
+    # 批 3：农业垂直线（申万农林牧渔）两个包（2026-11-08，change
+    # add-agriculture-industry-sources W3 6.1/6.2）。价格侧只走本地观测库通道，
+    # 服务端数据面只用于非价格序列（W3 6.3）。
+    ("agri-industry-watch", ["wire", "农业", "景气", "finddata"]),
+    ("agri-cost-chain", ["wire", "农业", "成本", "finddata"]),
 ]
 
 
