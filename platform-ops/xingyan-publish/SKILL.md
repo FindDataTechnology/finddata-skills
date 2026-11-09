@@ -115,6 +115,16 @@ claims:
 - 三集合端点：`api::briefing.briefing` / `api::course.course` / `api::research-article.research-article`。
 - 非本地化共享字段：`slug`/`date`/`kind`/`order`/`pack_url`；随语言变：`title/summary/tags/sources/source_material/body/**claims**`（claim 的 `section` 是各语言自己的标题文本）。
 - 发布闸会拦内部标识与 claim 违规（400 + 命中行/字段报文）：`F3-证据悬空`、双语不同构等。**只有 publish 与 create/update(status=published) 会拦，PUT 存草稿不拦**——所以草稿能过不代表能发。
+
+**三个 2026-11-09 实测的坑（都出在「校验全过、发布仍被拦」这条路上）**：
+
+| 现象 | 真因 | 处置 |
+| --- | --- | --- |
+| 发布 400 `claim「cNNNN」缺 evidence` | 前端把 `evidence: [src-1]` 摊成了字符串 `"[src-1]"` | 解析器必须把内联 YAML 列表落成数组；字符串会被 claim 闸判成「没写」 |
+| 发布 400 `F3-证据悬空`，本地 `ai_readable_check.py` 却是 0 错误 | **`course` 集合没有 `sources` 字段**（读回是 `null`），evidence 永远解析不到来源 | 本地门只校验 md，CMS 门校验入库后的字段；两者不同源。图文课程不要写 `claims`/`sources`（模板标为可选），除非该集合确实有 sources 字段 |
+| en 变体 400 `slug must be a string, but the final value was: null` | PUT en 时没带非本地化字段 | zh 能过是因为建条目时字段已入库；en 必须显式带 `slug/order/level/pack_url` |
+
+判定顺序建议：**先确认该集合有哪些字段**（`GET …?locale=zh` 看返回键），再决定要不要写 claims/sources——否则会在「本地全绿、发布必红」上来回空转。
 - **图文课程的图片上传**：媒体库路由是 **`/upload`**（不是 `/admin/upload`，后者 405）：
   ```python
   # POST {BASE}/upload  multipart 字段 files，头 Authorization: Bearer <admin JWT>
