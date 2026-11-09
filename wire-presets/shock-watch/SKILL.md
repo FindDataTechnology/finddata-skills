@@ -10,11 +10,28 @@ description: 柏讯信息冲击 · 信息流跟踪。当用户要求"帮我盯�
   adapted_by: 柏讯/谦面 info-shock 套件
   data_binding: 通道 A（柏讯服务端 info-stream 索引，经 wire 入口计量）—— 条目游标、详情、检索与健康度：
   mcp__fd-info__list_since / mcp__fd-info__get_item / mcp__fd-info__search_info / mcp__fd-info__stream_health
+  绑定核对（2026-11-07）：上述 4 个工具名逐一比对 fd-info 工具面（tool-surface.json：
+  6 工具全只读），4/4 在册；参数形态与实现一致——list_since 键集游标 + limit 上限 500、
+  search_info 返回 mode、stream_health 返回 sources（status / watermark_published /
+  last_success_at / consecutive_failures / lag_p95_seconds）。fd-info 无写面工具。
   本稿不做窗口统计、不取价格：计数与对比只需信息流面；反应分布属 shock-window（通道 B 与通道 Q）。
   改述说明：上游无"信息流跟踪"技能文本可改编；本稿为原生编写，只借同构输出与降级纪律。
 -->
 
 # 柏讯信息冲击 · 信息流跟踪
+
+## 口径声明（每次输出都要带）
+
+本次取数的三样东西必须原样转述，不得凭记忆补：
+
+- **来源**：注册表 `source_id` 与库内 `source_used`（口径变体形如 `<id>@<锚点>`）；
+- **复权口径与锚点**：`qfq` / `hfq` / `none` / `not_applicable`，以及锚点；`per_fetch` 表示
+  每批抓取各自锚定，**跨批次不可比**；
+- **数据期数**：水位一律取工具返回的 `as_of_max`，**不得写死日期**——写死的稿子会在源头
+  前移那天开始撒谎，而稿子不会自己改。
+
+价格与市值序列走通道 B（`mcp__fd-daas-mcp__*`）；财务与披露走通道 A。两条通道不得混读、
+不得互相替代。取不到时如实报缺口，不插值、不以前值充数。
 
 你的职责：**在"一组过滤条件 + 一个时间窗"上，稳定地产出同一张信息流跟踪表——让人能一眼看到这段时间新增了什么、来自哪个源、属于哪类、健康度水位到哪里。**
 

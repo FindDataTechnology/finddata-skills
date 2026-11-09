@@ -8,7 +8,7 @@ description: 柏讯事件驱动 · 事件识别与分类。当用户要求"这�
   source_skill: 纪律借鉴 TradingAgents News Analyst 的多源检索（"when in doubt, say so" 与"本次无报告 ≠ 结论为空"）与 FinRobot 13 章"催化剂"专章的事件/论点分离；三路检索、六组映射表、检索局限声明与清单字段为柏讯原生编写，未复制上游技能文本
   source_license: Apache-2.0（两源同为 Apache-2.0）
   adapted_by: 柏讯/谦面 wire-event-driven 套件
-  data_binding: 通道 A（柏讯服务端，经 wire 入口计量）—— 公告列表、正文、全文检索、业绩预告/快报、
+  data_binding: 通道 A（柏讯服务端，经 wire 入口计量）—— 公告列表、正文、全文检索、业绩预告（快报为字典外口径，见 1.2）、
   监管口径与交易所主体解析：
   mcp__fd-cn-report__list_filings / mcp__fd-cn-report__get_filing / mcp__fd-cn-report__search_reports /
   mcp__fd-cn-report__get_special_report / mcp__fd-cn-report__list_report_types /
@@ -18,12 +18,30 @@ description: 柏讯事件驱动 · 事件识别与分类。当用户要求"这�
   mcp__fd-cn-report__get_csrc_merger_review / mcp__fd-cn-report__list_csrc_enforcement;
   互动平台（当前上游不可用，见 4.3）：
   mcp__fd-cn-report__get_sse_interaction / mcp__fd-cn-report__get_szse_interaction
+  绑定核对（2026-11-07）：以上 15 个工具名逐一比对 fd-cn-report 工具面
+  （tool-surface.json：44 工具 = 39 只读 + 5 写面），15/15 在册且均为只读面；
+  本稿不点名任何写面工具（index_records / delete_index / clear_cache /
+  audit_rule_gaps / open_industry_rules_dashboard）。参数与返回形态按服务端
+  签名校正：list_filings 无分页参数、search_reports 检索的是已落库索引。
   本稿不取价格：识别与分类只依赖公告面；价格序列与反应统计属 event-history（通道 B 与通道 Q）。
   改述说明：分类体系不自建——六组事件类型由柏讯服务端随附的巨潮分类字典
   cninfo_categories.json（从巨潮前端 JS 提取的机器可读分类）映射而来；映射表见正文。
 -->
 
 # 柏讯事件驱动 · 事件识别与分类
+
+## 口径声明（每次输出都要带）
+
+本次取数的三样东西必须原样转述，不得凭记忆补：
+
+- **来源**：注册表 `source_id` 与库内 `source_used`（口径变体形如 `<id>@<锚点>`）；
+- **复权口径与锚点**：`qfq` / `hfq` / `none` / `not_applicable`，以及锚点；`per_fetch` 表示
+  每批抓取各自锚定，**跨批次不可比**；
+- **数据期数**：水位一律取工具返回的 `as_of_max`，**不得写死日期**——写死的稿子会在源头
+  前移那天开始撒谎，而稿子不会自己改。
+
+价格与市值序列走通道 B（`mcp__fd-daas-mcp__*`）；财务与披露走通道 A。两条通道不得混读、
+不得互相替代。取不到时如实报缺口，不插值、不以前值充数。
 
 你的职责：**把一段时间内某家（或一批）公司的公告找全、归对类、标清来源。**
 
@@ -52,7 +70,7 @@ description: 柏讯事件驱动 · 事件识别与分类。当用户要求"这�
 
 | 通道 | 本稿用不用 | 管什么 |
 |---|---|---|
-| **通道 A**（柏讯服务端，经 wire 入口计量） | 全部用 A | 公告列表、公告正文、全文检索、业绩预告/快报、监管口径文件、交易所主体解析 |
+| **通道 A**（柏讯服务端，经 wire 入口计量） | 全部用 A | 公告列表、公告正文、全文检索、业绩预告（快报不在巨潮分类字典内，见 1.2）、监管口径文件、交易所主体解析 |
 | 通道 B（本地 DAAS） | 不用 | 价格序列。本稿不取价格；识别不需要价格 |
 | 通道 Q（fd-quant 计算面） | 不用 | 统计算术。本稿不做统计 |
 
@@ -72,35 +90,44 @@ mcp__fd-cn-report__list_filings(ticker_or_name="600519")
 
 - **参数名是 `ticker_or_name`**（代码或名称），不是 `code`。传错参数名上游会直接校验失败。
 - 返回条目形如：`{"announcement_id":"1225475868","title":"贵州茅台2026年半年度报告","form":"半年度报告","published":"2026-08-14","pdf_url":...}`。**`announcement_id` 是清单的必填字段**，无标识的条目不得进入清单。
-- 时间范围按用户要求取（默认近 3 个月）；时间参数以服务端实际签名为准，**不确定时先确认再调，不得臆造参数名**。
-- 分页：返回有页大小与总页数，**必须翻到用户要求的时间边界**，不能只取第一页就宣称"近三个月公告已列全"。
+- 时间窗参数是 `since` / `until`（`YYYY-MM-DD`，含端点，可只给一端），默认近 3 个月；也可用 `year`，但 `year` 与 `since`/`until` **互斥**，同时传会直接报错。另有两个过滤参数：`form`（四个定期报告名或标题子串）与 `category`（分类字典里的中文名或 `category_*` 码），两者同样**互斥**。
+- **没有分页参数**（无 `page` / `pageNum` / `offset`）：`limit` 控制单次返回条数，服务端一次最多返回 50 行，返回的是平铺列表，**不带总条数与总页数**。要覆盖更长时间，**按时间窗切段多调几次**（如逐月），并在输出里写清各段窗口与各段条数——不能把一次调用的结果当成"近三个月公告已列全"。
 
 ### 1.2 第二路：分类字典（口径来源）
 
 两件事分开做：
 
-1. **分类清单**：`mcp__fd-cn-report__list_report_types` 取当前在册的报告/公告分类。
-2. **按分类取数**：业绩预告与快报类用 `mcp__fd-cn-report__get_special_report`，**`category` 是必填参数**：
+1. **分类清单**：`mcp__fd-cn-report__list_report_types` 取当前在册的报告/公告分类（返回 `{groups:[{name, categories:[{name, code, description}]}], count}`；带 `group` 参数只取该组）；正文所称"分类字典"即本工具返回，不需要另找文件。
+2. **按分类取数**：业绩预告类用 `mcp__fd-cn-report__get_special_report`，**`category` 是必填参数**，取字典里的中文名或 `category_*` 码（如 `业绩预告` = `category_yjygjxz_szsh`）：
 
 ```text
 mcp__fd-cn-report__get_special_report(ticker_or_name="600519", category="业绩预告")
 ```
 
+- **字典里没有「业绩快报」这一分类**（巨潮官方分类只有业绩预告与权益分派；快报口径见该字典的 `_todo` 说明），因此快报**不能**传给 `get_special_report`——会返回 `unknown CNINFO category`。快报只能走 `list_filings` 的 `form`/标题子串过滤或全文检索，并在清单里标"字典外"。
+- `get_special_report` 返回 `{stock_code, company_name, category, year, filings, pdf_url}`（`filings` 为该分类下的公告行）；带 `section` 时才下载 PDF 并抽该节正文，不带 `section` **不下载**。`limit` 默认 5，只影响候选公告条数。
+
 监管口径单独走，**不得与公司公告混成一条**：
 
 ```text
-mcp__fd-cn-report__list_csrc_filings()        → {"filings": [...], "count": N}
-mcp__fd-cn-report__get_csrc_ipo_review(...)
-mcp__fd-cn-report__get_csrc_merger_review(...)
-mcp__fd-cn-report__list_csrc_enforcement(...)
+mcp__fd-cn-report__list_csrc_filings(limit=20)        → [{title, published, url, source}, …]   # 平铺列表
+mcp__fd-cn-report__get_csrc_ipo_review(company_or_code="600519")
+mcp__fd-cn-report__get_csrc_merger_review(company_or_code="600519")
+mcp__fd-cn-report__list_csrc_enforcement(limit=20)
 ```
+
+- 注意返回形态：`list_csrc_filings` / `list_csrc_enforcement` 返回**平铺列表**（不是 `{filings, count}`）；`begin_date` / `end_date`（`YYYY-MM-DD`）只做**后置过滤**，`limit` 默认 20。
+- **空列表不等于"没有监管公告"**：列表类接口在上游取页失败时返回 `[]` 而不是 `error` 字段。空列表只能写"未检索到（该接口失败时同样返回空列表，未经在线核实）"，不得写成"无监管公告/无处罚"。
+- `get_csrc_ipo_review` / `get_csrc_merger_review` 返回 `{company, source, fields}` 或 `{company, source, error}`，按"未匹配/取不到"如实记录。
 
 ### 1.3 第三路：全文检索（补漏，召回不定）
 
 ```text
-mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务端签名为准
+mcp__fd-cn-report__search_reports(query="<关键词>", year=<年>, company="<公司>", stock_code="600519", section="<节名>", from_=0, size=25)
 ```
 
+- 参数：`query` 必填；`year` / `company` / `stock_code` / `section` 为可选过滤；`from_` 是偏移、`size` 是单页条数（**上限 50**）。返回 `{total, returned, hits}`，`hits[].id` 与 `hits[].source` 为索引文档字段。
+- **检索范围是已落库索引**（`cnreport-{year}`，由入库管道写入的研报正文），**不是巨潮全量公告**：没入库的公告在这里查不到，`total` 也只是"该索引内命中数"。因此"全文检索未命中"绝不等于"公告不存在"。
 - 用于**列表与分类都盖不住**的情形：正文里出现的关键词（如"中标""终止""计提"）、跨主体检索、历史回溯。
 - **召回不定**：关键词不同，结果集不同；换个近义词可能多出一批。因此全文检索的结论**只能表述为"在该关键词下命中 N 条"**，不能表述为"共 N 条"。
 - 全文检索**不得替代**第一路：命中结果必须回到 `list_filings` 的 `announcement_id` 上对齐；对不齐的条目单列"仅全文命中，未在列表中核到"，不得直接混入正式清单。
@@ -109,7 +136,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 
 ## 阶段 2：六组事件类型映射（不自建分类）
 
-六组事件类型由 `cninfo_categories.json` 的官方分类**映射**而来。字典的 6 个组（定期报告 / 融资 / 业绩 / 股权变动 / 公司治理 / 风险与特别处理）与我们的 6 个事件组**不是一一对应**：事件组是按"读者接下来怎么处理这条事件"重组的。
+六组事件类型由 `cninfo_categories.json` 的官方分类**映射**而来（运行时经 `mcp__fd-cn-report__list_report_types` 取用，六组名与本表逐字一致：定期报告 / 融资 / 业绩 / 股权变动 / 公司治理 / 风险与特别处理）。字典的 6 个组与我们的 6 个事件组**不是一一对应**：事件组是按"读者接下来怎么处理这条事件"重组的。
 
 | 事件组 | 映射自字典分类（`cninfo_categories.json`） | 典型公告 | 归类提示 |
 |---|---|---|---|
@@ -118,11 +145,35 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 | **股权变动** | 股权变动：股权变动、股权激励、解禁 | 权益变动报告书、收购报告书、股权激励计划、限售解禁 | **解禁是"可卖"不是"已卖"**，不得写成"股东减持"；减持事实须有单独的减持公告 |
 | **监管类** | 风险与特别处理：风险提示、澄清致歉、补充更正、特别处理和退市、退市整理期；外加 CSRC 口径：`mcp__fd-cn-report__list_csrc_filings` / `get_csrc_ipo_review` / `get_csrc_merger_review` / `list_csrc_enforcement` | 问询函、处罚、立案调查、退市风险提示、IPO 与并购审核 | 交易所/公司公告与证监会口径**分列两栏**，同一事项在两边都有时标注"同一事项的两个口径"，不合并计数 |
 | **经营类** | 公司治理：日常经营、中介报告、股东大会、董事会、监事会、公司治理 | 重大合同、中标、产能投产、股东会/董事会决议 | 治理程序类（会议通知、换届、章程修订）标为"背景类"，作为独立事件计数时须在清单里明示；重大合同归经营类，其金额与生效条件交 `event-reading` 读正文 |
-| **互动类** | 互动平台问答：`mcp__fd-cn-report__get_sse_interaction` / `mcp__fd-cn-report__get_szse_interaction` | 投资者问答、公司回复 | **当前不可用（上游 404/405）**，见 4.3。互动类在清单里保留字段位，但状态写"不可用"，不写 0 |
+| **互动类** | **字典里没有互动组**（互动渠道来自交易所互动接口，不是巨潮分类）：`mcp__fd-cn-report__get_sse_interaction` / `mcp__fd-cn-report__get_szse_interaction`（参数 `ticker_or_name`，`limit` 默认 20） | 投资者问答、公司回复 | **工具在册但当前上游不可用（404/405）**，见 4.3。互动类在清单里保留字段位，但状态写"不可用"，不写 0 |
 
 **未映射条目**：字典之外的公告（form 未在字典中）归入「未映射」单列，**不计入六组统计**，也不得强行塞进最接近的组。未映射条目多时，说明字典版本落后于上游，写进缺口清单。
 
 **归类依据必须可复现**：每条清单条目在"事件类型"旁写一行依据，形如"命中字典分类：业绩预告（category_yjygjxz_szsh）"。**不得只写组名不写依据**。
+
+---
+
+## 判定前提（可核）
+
+> 与 `basis` **并存，互不替代**：`basis` 是给人读的理由，本节是给机器核的条件。
+> 把条件只写进 `basis` 等于放弃监控——「前提失效」将无法被发现。
+> 形状说明：`Decision v2` 落地后，本节表格直接搬进契约的 `preconditions` 字段，正文形状不变。
+
+| # | 前提 | 指标引用 | 比较 | 阈值 | 口径日 |
+|---|---|---|---|---|---|
+| 1 | 信息源健康（非红档） | `info-stream.source_health.<src>` | `eq` | `green` | <as_of> |
+| 2 | 检索窗口内条目数 > 0 且来自成功调用 | `info-stream.items.<window>` | `gt` | 0 | <as_of> |
+| 3 | 入库延迟在阈值内 | `info-stream.ingest_lag_hours` | `lte` | <阈值> | <as_of> |
+
+注意「空结果」与「取数失败」必须分开：失败时前提 1 已不成立，清单须标「未取得」而非「无事件」。
+
+三条硬纪律：
+
+1. **每行五字段齐全**；任一行缺字段即视为该前提不可核，须在表下点名。
+2. **`metric_ref` 必须可解析**（柏讯概念标识 / 计算面工具参数 / 本地数据集字段）。解析不了就写「不可核（指标未接入）」并给补证路径，不得留空。
+3. **凑不出前提时不许编**：写「本判定无结构化前提」并说明原因。一条永远成立的前提比没有前提更糟。
+
+自查：判定发布前逐行核对上表；判定发布后若某前提已不成立，必须在正文显著位置说明。
 
 ---
 
@@ -137,7 +188,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 | **事件类型** | 是 | 六组之一，或"未映射" | 必须附一行归类依据（见阶段 2） |
 | 标题 | 是 | 上游 `title` | 只作检索入口，**不作结论** |
 | 来源工具 | 是 | 实际调用的工具名 | 便于复核；三路各记各的 |
-| 数据期数 | 是 | 本次检索的起止日 + 返回条数 + 页数 | 见阶段 5 |
+| 数据期数 | 是 | 本次检索的起止日 + 返回条数 + 窗口段数 | 见阶段 5 |
 
 **主体解析不可跳过**：先 `mcp__fd-cn-report__get_company(ticker_or_name=...)` 拿 `stock_code` / `name` / `org_id` / `exchange`。交易所口径不一致时用 `get_sse_company` / `get_szse_company` / `get_bse_company` 核对。**主体未定不检索**——同名或 A+H 双主体会把两家的公告混进一张清单。
 
@@ -147,7 +198,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 
 ### 4.1 覆盖以上游返回为准，不是"全市场全历史"
 
-`list_filings` 返回的是上游巨潮口径的数据，覆盖区间、更新时点与分页深度都受上游约束。**"本次返回 N 条"不等于"该公司共 N 条公告"**。本技能约定：单次批量检索不超过 **200 条**，超出时分批并在输出中写"共 M 批、每批时间范围"。
+`list_filings` 返回的是上游巨潮口径的数据，覆盖区间、更新时点与单次返回深度都受上游约束。**"本次返回 N 条"不等于"该公司共 N 条公告"**。本技能约定：单次调用 `limit` 不超过 **50 条**（服务端一次最多返回 50 行，且返回体没有总条数可对账）；需要更多时按时间窗切段（如逐月）多调几次，并在输出中写"共 M 段、每段起止日与条数"。
 
 ### 4.2 全文检索的召回不确定
 
@@ -190,7 +241,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 【事件清单】<公司简称>（<证券代码>）· <起止日>
 主体：<全称> ｜ 交易所：<SSE/SZSE/BSE>（来源：mcp__fd-cn-report__get_company，数据期数：<调用日>）
 检索口径：列表 <工具名> ｜ 分类 <分类名/代码> ｜ 全文 <关键词>
-返回：列表 N1 条（M 页）｜ 分类 N2 条 ｜ 全文 N3 条 ｜ 互动：不可用（上游 404/405）
+返回：列表 N1 条（M 段窗口）｜ 分类 N2 条 ｜ 全文 N3 条 ｜ 互动：不可用（上游 404/405）
 事件计数：业绩类 a ｜ 融资类 b ｜ 股权变动 c ｜ 监管类 d ｜ 经营类 e ｜ 互动类 不可用 ｜ 未映射 f
 
 | 披露日 | 公告标识 | 标题 | 上游分类 | 事件类型 | 归类依据 | 来源工具 |
@@ -206,7 +257,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 | 项 | 来源（工具名） | 数据期数 |
 |---|---|---|
 | 主体信息 | `mcp__fd-cn-report__get_company` | 调用日 <YYYY-MM-DD> |
-| 公告清单 | `mcp__fd-cn-report__list_filings` | <起止日>，N 条 / M 页 |
+| 公告清单 | `mcp__fd-cn-report__list_filings` | <起止日>，N 条（M 段窗口，每段 ≤50 条） |
 | 业绩预告类 | `mcp__fd-cn-report__get_special_report` | category=<分类名>，N 条 |
 | 监管口径 | `mcp__fd-cn-report__list_csrc_filings` | <起止日>，count=N |
 | 全文命中 | `mcp__fd-cn-report__search_reports` | 关键词 <词>，N 条 |
@@ -218,7 +269,7 @@ mcp__fd-cn-report__search_reports(...)     # ES 全文索引；参数以服务�
 - ❌ **所有公告标识、标题、披露日期、上游分类必须来自工具返回**；无返回写"未取得"，**禁止编造公告、日期、分类或 PDF 链接**。
 - ❌ **禁止凭记忆补公告**：模型记忆里的"某公司某年定增/某次处罚"不得进入清单，除非本次调用确实返回该条；**不得用记忆里的公告标题凑数**。
 - ❌ **不得把标题当结论**：清单只陈述"发了什么公告"，不陈述"这意味着什么"。看到"重大合同"就写"利好"是越界。
-- ❌ **不得把"返回 N 条"写成"共 N 条"**，不得把第一页当成全量。
+- ❌ **不得把"返回 N 条"写成"共 N 条"**；`list_filings` 没有分页参数、单次上限 50 条且不返回总条数，**不得把一次窗口调用当成全量**，也不得编造页数。
 - ❌ **互动接口返回 `error` 时必须报"未取得（上游返回 404/405）"**，不得写"无互动记录"、不得静默跳过。
 - ❌ **不得自行发明事件类型**：六组之外只允许"未映射"，不允许临时新增"并购类""分红类"等组名。
 - ❌ **主体未锁定不得检索**；公告标识缺失的条目不得进入清单。
