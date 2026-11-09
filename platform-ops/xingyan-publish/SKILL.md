@@ -23,6 +23,8 @@ description: "把文章/教程写并发布到寻数·星研内容平台：按「
 
 **canonical 起草目录**：`~/finddata/docs/xingyan/`（三分区 `briefings/` `academy/` `research/`，双语 `zh/`+`en/` 成对，slug 必须相同）。README 与模板在该目录。
 
+**线上 URL 与目录名不同名，别按目录猜**（2026-11-09 实测踩过）：课程必须写成 `/zh/research/academy/<slug>/` 与 `/research/academy/<slug>/`，**没有** `/academy/<slug>` 这条路由。用错前缀时 nginx 会回落到 10269 字节的通用外壳（HTTP 200，`<h1>` 是站点主标题，正文里没有课程词），看起来极像"内容没发出去"，其实只是路径不存在。另外**结尾斜杠必需**：省略时是 301 跳到带斜杠的地址，`curl` 不 `-L` 就只拿到跳转页。
+
 ---
 
 ## §0 为 AI 读者写作（写作纪律本体，先读这节）
