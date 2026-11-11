@@ -1,6 +1,6 @@
 ---
 name: rotation-portfolio
-description: 柏讯自适应轮动 · 风险预算建仓与风控参数。当用户要求"按排序结果给个仓位方案""组之间怎么分配""止损怎么设"时使用。产出：TargetWeights 契约实例（组权重 → 资产权重）+ 风险预算依据 + 风控参数（并明确止损须在策略内表达、引擎不自动执行）。
+description: 柏讯自适应轮动 · 风险预算建仓与风控参数。当用户要求"按排序结果给个仓位方案""组之间怎么分配""止损怎么设"时使用。产出：TargetWeights 契约实例（组权重 → 资产权重）+ 风险预算依据 + 风控参数（并写明：契约本身没有止损字段；run 级 risk 覆盖配了才由平台执行，不配则不存在隐式止损）。
 ---
 
 <!-- ATTRIBUTION
@@ -17,9 +17,13 @@ description: 柏讯自适应轮动 · 风险预算建仓与风控参数。当用
   mcp__fd-paper-trading__create_strategy / update_strategy / get_strategy（weight 模式 spec）;
   mcp__fd-paper-trading__search_instruments / get_bars（标的可用性）;
   mcp__fd-paper-trading__run_backtest / list_strategy_runs（回测）
-  改述说明：风险预算与例外框架借鉴 FinRL-X（Apache-2.0）。**关键差异**：FinRL-X 的 risk_manager
-  在策略内部执行止损；柏讯的 fd-paper-trading **引擎不自动执行止损**——止损必须在策略表达或
-  由人执行，本稿必须把这一点讲明，不得暗示"引擎会帮你止损"。
+  改述说明：风险预算与例外框架借鉴 FinRL-X（Apache-2.0）。**关键差异**不在"能不能自动止损"，
+  而在**止损不在契约里**：FinRL-X 的止损写在策略内部；柏讯的 `TargetWeights` 契约只承载权重
+  （`constraints` 只有单票与板块两个上限），权重模式只消费 weights_series。要让它真正被执行，
+  须给 run 带 `risk` 覆盖（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）——由平台逐 bar
+  （跳空保守成交）/逐 tick 执行，并在快照里以 `effective_weights` 与 `target_weights` 并列归因；
+  **不配覆盖则不存在隐式止损**，须在权重序列内表达或由人执行。本稿不得暗示"不配也会有人替你
+  止损"，也不得反过来说"引擎永远不执行止损"（2026-11-06 `stop-order-execution` 之后已不成立）。
   上游业绩数字不引用。
 -->
 
@@ -43,12 +47,16 @@ description: 柏讯自适应轮动 · 风险预算建仓与风控参数。当用
 
 **止损与冷却（2026-11-06 与 `stop-order-execution` 对齐）**：账户层现在有 STOP/STOP_LIMIT
 订单型，run 级有风控覆盖（`risk` 配置：`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）。
-轮动的止損表达两种路径：
-1. **run 级覆盖（荐）**：启动轮动 run 时带 `risk` 配置，触发由平台执行（回测逐 bar 跳空保守
+轮动的止损表达两种路径：
+1. **run 级覆盖（荐）**：带 `risk` 配置启动 run，触发由平台执行（回测逐 bar 跳空保守
    成交 / live 逐 tick），触发的标的在 `cooldown_bars` 个调仓点内有效目标权重按 0 处理——
    快照 `effective_weights` 列与 `target_weights` 列并列可归因（"零是冷却不是策略"）。
+   **可达性如实说**：`mcp__fd-paper-trading__run_backtest` 已开放 `risk` 参数；live 的
+   `start_strategy` **当前不接受 params/risk**——所以"配了就会自动执行"在回测上已成立，
+   在 live 上要等该工具开放参数，别对用户许诺现在已经能配。
 2. **技能内表达**：若不配 run 级覆盖，止损纪律必须在权重序列内显式表达——**不存在隐式止损**；
-   向用户询问"止损会自动执行吗"时答案是：配了 `risk` 才会（见 6.5 实测记录的更新）。
+   向用户询问"止损会自动执行吗"时的准确答案是：**契约里没有止损字段；回测带了 `risk` 覆盖
+   才会由平台执行，不带（或 live 现在）就不会**。
 
 ---
 
