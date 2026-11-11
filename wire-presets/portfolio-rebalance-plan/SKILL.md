@@ -1,6 +1,6 @@
 ---
 name: portfolio-rebalance-plan
-description: 柏讯组合风险 · 再平衡方案。当用户要求"从现在的持仓调到这个目标权重，具体买什么卖什么""每只调多少股""调仓成本大概多少""这套再平衡规则历史上表现如何"时使用。产出：逐标的差额 / 方向 / 整数股数（向下取整，与权重模式引擎同口径）+ 成本预估（佣金 / 印花税 / 滑点分项，参数显式）+ 可送入权重模式回测的权重规则。**方案不含择时建议**；并写明：契约里没有止损字段、权重模式只消费 weights_series（止损要么写进权重序列，要么给 run 带 risk 覆盖——回测已开放、live 的 start_strategy 暂不接受），cash_floor 只是权重上限校验而非独立持仓约束。
+description: 柏讯组合风险 · 再平衡方案。当用户要求"从现在的持仓调到这个目标权重，具体买什么卖什么""每只调多少股""调仓成本大概多少""这套再平衡规则历史上表现如何"时使用。产出：逐标的差额 / 方向 / 整数股数（向下取整，与权重模式引擎同口径）+ 成本预估（佣金 / 印花税 / 滑点分项，参数显式）+ 可送入权重模式回测的权重规则。**方案不含择时建议**；并写明：契约里没有止损字段、权重模式只消费 weights_series（止损要么写进权重序列，要么给 run 带 risk 覆盖——HTTP 回测接口接受、但 MCP 的 run_backtest 与 live 的 start_strategy 都尚未透传），cash_floor 只是权重上限校验而非独立持仓约束。
 ---
 
 <!-- ATTRIBUTION
@@ -18,7 +18,7 @@ description: 柏讯组合风险 · 再平衡方案。当用户要求"从现在�
   通道 C（方法论层，无数据依赖）—— 差额计算、整数股取整、成本分项与"不含择时"纪律
   改述说明：目标权重到持仓的落地思路借鉴 FinRL-X（Apache-2.0）。**关键差异**：柏讯的权重模式
   引擎只消费 weights_series（每调仓日的目标权重），**不含止损字段**；要让平台执行止损须给 run 带
-  `risk` 覆盖（回测已开放、live 的 `start_strategy` 暂不接受），否则只能把条件写进权重或由人执行；
+  `risk` 覆盖（HTTP 回测接口接受，MCP `run_backtest` 与 live `start_strategy` 均尚未透传），否则只能把条件写进权重或由人执行；
   TargetWeights.constraints 只有 max_weight_per_symbol / max_weight_per_sector 两个上限字段。
   cash_floor 在引擎里是权重上限校验（Σweights + cash_floor ≤ 1），不是独立持仓约束。
   上游业绩数字不引用。
@@ -45,7 +45,7 @@ description: 柏讯组合风险 · 再平衡方案。当用户要求"从现在�
 
 ## ⚠️ 先说清三件引擎事实（每次出方案都要带）
 
-1. **止损不在契约里**。权重模式只消费 `weights_series`（每个调仓日的目标权重），`TargetWeights.constraints` **只有 `max_weight_per_symbol` 与 `max_weight_per_sector`**，没有止损价、触发线、冷却参数。若用户在方案里期待"跌破就自动清仓"，有三条路可走：(a) 给 run 带 `risk` 覆盖（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`，回测 `run_backtest` 已开放、live 的 `start_strategy` 暂不接受）；(b) 把条件写成权重（触发日该标的权重写 0）——回测与 live 都成立；(c) 由人执行。**不配 `risk` 覆盖时不存在隐式止损。**
+1. **止损不在契约里**。权重模式只消费 `weights_series`（每个调仓日的目标权重），`TargetWeights.constraints` **只有 `max_weight_per_symbol` 与 `max_weight_per_sector`**，没有止损价、触发线、冷却参数。若用户在方案里期待"跌破就自动清仓"，有三条路可走：(a) 给 run 带 `risk` 覆盖（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）——**引擎支持**，但 HTTP 回测接口之外，MCP 的 `run_backtest` 与 live 的 `start_strategy` 都尚未透传该参数；(b) 把条件写成权重（触发日该标的权重写 0）——回测与 live 都成立；(c) 由人执行。**不配 `risk` 覆盖时不存在隐式止损。**
 2. **`cash_floor` 是权重上限校验，不是独立持仓约束**。契约只校验 `Σweights + cash_floor ≤ 1`；引擎不会替你扣出现金。**留现金靠的是把 `Σweights` 设成小于 1**。权重模式回测的快照里 `cash_floor` 会回读为 `0.0`（即使 spec 的 `cash_floors` 里存着 0.2）——看到 0.0 不代表现金没留住，而是现金由 `1 − Σweights` 隐含。
 3. **目标映射表达的是"整个组合"**。某只标的若已持有但**不在目标映射里**，引擎按**目标权重 0** 处理，即**清仓**；不会"保持不动"。方案必须把这类标的显式列成"卖出全部"。
 
@@ -260,4 +260,4 @@ description: 柏讯组合风险 · 再平衡方案。当用户要求"从现在�
 
 ---
 
-> **免责声明**：本技能由 AI 辅助生成。再平衡方案是**当前持仓到目标权重的算术映射与成本测算**，**不构成投资建议**，**不含择时建议**，也**不保证**任何执行结果。持仓与价格来自柏讯模拟交易服务的**模拟盘**（paper-only：无真实资金、无券商接口、不存在真实下单）或本地 DAAS。**止损不在契约里**：权重模式只消费 `weights_series`，`TargetWeights.constraints` 只有 `max_weight_per_symbol` 与 `max_weight_per_sector`；要让平台执行须给 run 带 `risk` 覆盖（回测已开放、live 暂不接受）或写进权重序列；**`cash_floor` 是权重上限校验（Σweights + cash_floor ≤ 1），不是独立持仓约束**，留现金靠 `Σweights < 1`，回测快照会把 `cash_floor` 回读为 0.0。**数据截至**以方案 `as_of` 为准，**数据期数**见各序列起止日与有效点数。
+> **免责声明**：本技能由 AI 辅助生成。再平衡方案是**当前持仓到目标权重的算术映射与成本测算**，**不构成投资建议**，**不含择时建议**，也**不保证**任何执行结果。持仓与价格来自柏讯模拟交易服务的**模拟盘**（paper-only：无真实资金、无券商接口、不存在真实下单）或本地 DAAS。**止损不在契约里**：权重模式只消费 `weights_series`，`TargetWeights.constraints` 只有 `max_weight_per_symbol` 与 `max_weight_per_sector`；要让平台执行须给 run 带 `risk` 覆盖（引擎支持，当前工具入口尚未透传）或写进权重序列；**`cash_floor` 是权重上限校验（Σweights + cash_floor ≤ 1），不是独立持仓约束**，留现金靠 `Σweights < 1`，回测快照会把 `cash_floor` 回读为 0.0。**数据截至**以方案 `as_of` 为准，**数据期数**见各序列起止日与有效点数。
