@@ -13,6 +13,8 @@ description: 柏讯组合风险 · 回撤与波动体检。当用户要求"看�
   通道 Q（fd-quant 确定性计算面，不取数、只对传入序列作答）—— 全部统计量：
   mcp__fd-quant__summarize_drawdown / summarize_volatility / summarize_concentration /
   summarize_information_ratio / summarize_beta / summarize_return / check_observation_sufficiency;
+  阈值判断（"是不是超了上限"）—— mcp__fd-quant__evaluate_portfolio_gate（**唯一实现**；
+  本稿不自己比阈值，阈值由用户给，未配置即报"判据不可用"，见 §7.1）;
   通道 B（本地 DAAS，不经 wire 入口计量）—— 基准与个股价格序列：
   mcp__fd-daas-mcp__alerts_get_series_latest / daas_get_indicator / daas_list_indicators;
   通道 C（方法论层，无数据依赖）—— 体检不预测的表述纪律
@@ -178,6 +180,23 @@ HHI               0.xxxx    hhi                 top_n=5
 - 任何买卖动作（"应该减仓""建议换成 X""该止盈了"）——**体检不含买卖建议**。
 - 任何把体检数字当作"风险已被管理"的表述——**指标是状态描述，不是保护**。
 - 任何"上次判断对不对"的复盘——那属于 `pack-decision-review`，本稿只做状态。
+
+### 7.1 "是不是超了上限"必须走风控闸，本稿不自己比
+
+用户问"是不是太集中了 / 有没有超单票上限 / 回撤超了吧"，那是一个**阈值判断**，
+不是体检。阈值判断只有一份实现：`mcp__fd-quant__evaluate_portfolio_gate`
+（`weights` + `thresholds` + `sectors` + `equity_series`）。做法：
+
+1. 阈值**由用户给**（`per_symbol_max` / `industry_max` / `drawdown_max` / `daily_loss_max`）；
+   本稿不设默认值、不替用户选。
+2. 调 `evaluate_portfolio_gate`，原样转述 `status`、`items`、`undetermined`。
+3. 返回 `status="unavailable"` 时，**必须**写"⚠️ 风控判据不可用：未配置 <缺失项>"，
+   **不得**改口说"未越限""风险可控"——判据不可用不等于全部通过。
+4. `undetermined` 里点名了标的（如板块归属缺），照实写"该项不可判定"，
+   **不得**把它算进某个板块、**不得**当作该项通过。
+
+**本稿不得自己写任何阈值比较**（`if hhi > 0.25` 之类）：两份判据一旦漂移，
+"为什么这笔单被拦"在不同入口就会得到不同答案，而报告上看不出来。
 
 ---
 
