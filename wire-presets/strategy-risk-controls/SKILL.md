@@ -25,7 +25,7 @@ description: 柏讯策略工坊 · 风控参数。当用户问"单票最多买�
 
 ## 第一句永远是这句
 
-> **这些是策略参数；契约里没有止损字段，只有配了 run 级 `risk` 覆盖才由平台执行。** 权重模式引擎执行的是"目标权重"，`TargetWeights.constraints` 只有单票与板块两个上限——止损线、止损价写不进契约。三条生效路径：①**run 级 `risk` 覆盖**（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）——引擎逐 bar（跳空保守）/逐 tick 执行并按 `effective_weights` 归因，**回测的 `run_backtest` 已透传该参数**，live 的 `start_strategy` 仍不接受 params；②编进 `target_weights` 的逻辑（代码轨）或写进静态序列；③模拟盘督导时人工执行。
+> **这些是策略参数；契约里没有止损字段。** 权重模式引擎执行的是"目标权重"，`TargetWeights.constraints` 只有单票与板块两个上限——止损线、止损价写不进契约。按轨选路：①**单标的轨 → run 级 `risk` 覆盖**（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）：`run_backtest` 与 `start_strategy` 均已透传，由平台执行（回测逐 bar/跳空保守、live 每根新 bar 复查），触发留 `risk_triggers`；②**权重（多标的）轨 → 编进 `target_weights` 的逻辑或写进静态 `weights_series`**（把止损表达为权重）——该轨的回测与 live 都没有 overlay 通道，带 `risk` 会被 `risk_not_supported_on_weight_track` 显式拒绝；③模拟盘督导时人工执行。
 
 用户问"设了会自动执行吗"——答案是"**取决于你有没有把它写进策略逻辑；只聊不做等于没设**"。
 

@@ -91,7 +91,7 @@ description: 柏讯自适应轮动 · 闭环运行与解读。当用户要"把�
 ## 阶段 3：模拟盘运行
 
 1. `start_strategy` 启动（paper-only，无真实资金）。
-2. 运行中每有新 bar，按 `every_n_bars` 调仓。**止损不在契约里**——见 `rotation-portfolio` 的归属声明：不配 run 级 `risk` 覆盖就不存在隐式止损，须已在权重序列里表达（`start_strategy` 当前不接受 `risk` 参数，live 上还不能配）。
+2. 运行中每有新 bar，按 `every_n_bars` 调仓。**止损不在契约里**——见 `rotation-portfolio` 的归属声明：轮动是权重轨，`risk` 覆盖对权重轨会被**显式拒绝**（`risk_not_supported_on_weight_track`），止损必须写进权重序列；单标的策略才可以直接给 `start_strategy` 带 `risk`。
 3. `stop_strategy` 停止。
 
 ---
@@ -173,7 +173,7 @@ regime 慢速 Z 阈值：|Z| ≥ 2.0（原值 3.0，因口径由隐含波动率�
 | 走前窗口不足 | 明示所需最少 bar 数，不给"全样本一次回测"冒充走前 |
 | 基准序列不可用 | 明示"无基准，不给超额指标"，只给绝对统计 |
 | 模拟盘未启动 | 说明快照不可得，**不伪造持仓** |
-| 用户问"止损会自动执行吗" | 回答"**契约里没有止损字段；引擎层面支持 run 级 `risk` 覆盖（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`），配了才由平台执行，不带就不会**"；再如实说可达性：**回测的 `run_backtest` 已可直接带 `risk`**，但 live 的 `start_strategy` 不接受 params（live 上仍不能配）。最后给两条替代路径（写进权重序列 / 人工执行） |
+| 用户问"止损会自动执行吗" | 回答"**契约里没有止损字段**"；再按轨回答：**轮动是权重（多标的）轨，`risk` 覆盖在两处都被显式拒绝**（`risk_not_supported_on_weight_track`：回测 `replay_weights` 无 overlay 形参、live 只消费一个永不 arm 的冷却），所以自动止损只能**写进 `weights_series`**（触发日权重写 0），另一条路由人执行；**单标的策略**则可以直接用 `run_backtest(risk=...)` / `start_strategy(risk=...)`，由平台逐 bar 执行。不要把单标的的能力说成轮动可用 |
 
 ---
 
