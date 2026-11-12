@@ -25,7 +25,7 @@ description: 柏讯策略工坊 · 风控参数。当用户问"单票最多买�
 
 ## 第一句永远是这句
 
-> **这些是策略参数；契约里没有止损字段。** 权重模式引擎执行的是"目标权重"，`TargetWeights.constraints` 只有单票与板块两个上限——止损线、止损价写不进契约。按轨选路：①**单标的轨 → run 级 `risk` 覆盖**（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）：`run_backtest` 与 `start_strategy` 均已透传，由平台执行（回测逐 bar/跳空保守、live 每根新 bar 复查），触发留 `risk_triggers`；②**权重（多标的）轨 → 编进 `target_weights` 的逻辑或写进静态 `weights_series`**（把止损表达为权重）——该轨的回测与 live 都没有 overlay 通道，带 `risk` 会被 `risk_not_supported_on_weight_track` 显式拒绝；③模拟盘督导时人工执行。
+> **这些是策略参数；契约里没有止损字段。** 权重模式引擎执行的是"目标权重"，`TargetWeights.constraints` 只有单票与板块两个上限——止损线、止损价写不进契约。三条生效路径：①**run 级 `risk` 覆盖（首选，两轨都可配）**（`stop_loss_pct`/`trailing_stop_pct`/`cooldown_bars`）：`run_backtest` 与 `start_strategy` 均已透传，平台在**每个交易日**判定持仓、触发即按「停损价与当根开盘的较差者」平仓（跳空保守），冷却期内有效权重按 0，快照留 `effective_weights` 与 `risk_triggers`；②**编进 `target_weights` 的逻辑或写进静态 `weights_series`**（把止损表达为权重）——两轨都成立，但只在调仓点生效；③模拟盘督导时人工执行。**边界**：当日无 bar 不判定；live 是日线纸面模拟，新 bar 到达才判定，不是日内实时。
 
 用户问"设了会自动执行吗"——答案是"**取决于你有没有把它写进策略逻辑；只聊不做等于没设**"。
 
