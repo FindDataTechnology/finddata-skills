@@ -51,11 +51,10 @@ description: 柏讯自适应轮动 · 风险预算建仓与风控参数。当用
 1. **run 级覆盖（荐）**：带 `risk` 配置启动 run，触发由平台执行（回测逐 bar 跳空保守
    成交 / live 逐 tick），触发的标的在 `cooldown_bars` 个调仓点内有效目标权重按 0 处理——
    快照 `effective_weights` 列与 `target_weights` 列并列可归因（"零是冷却不是策略"）。
-   **可达性如实说**（2026-11-11 核实工具签名，不是看 schema）：**HTTP 回测接口**
-   （`POST /api/v1/strategies/{id}/backtests`，即 `BacktestRequest`）接受 `risk`；但 MCP 的
-   `run_backtest` 工具只透传 `strategy_id/start/end/initial_cash`，**尚未透传 `risk`**；live 的
-   `start_strategy` 也不接受 params。所以"配了就会自动执行"**在引擎上成立、在当前两个工具入口上
-   都还不能配**——别对用户许诺现在就能配。
+   **可达性如实说**（2026-11-12 更新）：MCP 的 `run_backtest` **已透传 `risk`**——回测可直接带
+   `risk={stop_loss_pct, trailing_stop_pct, cooldown_bars}`，由平台逐 bar 触发并按 `effective_weights`
+   归因。**live 仍不能配**：`start_strategy` 不接受 params，所以"跑起来之后自动止损"目前只在回测上
+   成立。
 2. **技能内表达**：若不配 run 级覆盖，止损纪律必须在权重序列内显式表达——**不存在隐式止损**；
    向用户询问"止损会自动执行吗"时的准确答案是：**契约里没有止损字段；回测带了 `risk` 覆盖
    才会由平台执行，不带（或 live 现在）就不会**。
