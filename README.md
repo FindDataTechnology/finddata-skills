@@ -1,5 +1,7 @@
 # finddata-skills
 
+> **Part of the [Wire line (寻数·柏讯)](https://www.finddatatech.cloud/products/wire) of [FindData](https://www.finddatatech.cloud)** — skill sources for the wire presets.
+
 FindData 精选 agent 技能库：经济、金融与通用数据分析。每个技能的核心价值是**分析方法论**，
 数据源可替换——凡有数据源分层的技能，已注入 "FindData MCP 优先" 指引（`fd-open-data-mcp` /
 `fd-find-data-business-mcp` 的 `read` / `read_range` / `list_concepts` / `ai_search` / `graph_search`）。

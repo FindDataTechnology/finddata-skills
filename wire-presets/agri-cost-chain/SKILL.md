@@ -9,7 +9,7 @@ description: 柏讯农业成本链 · 价格与成本侧历史读数。当用户
   source_license: Apache-2.0（仅适用于继承的骨架；本稿正文为原生文本）
   adapted_by: 柏讯/谦面 wire-industry-linkage 套件 · 农业成本链包（change: add-agriculture-industry-sources W3）
   data_binding: 通道 L（本地观测库，价格类唯一通道，不经 wire 入口计量）—— 价格类序列只从这里取：
-  /Users/chengsishi/finddata/dashboards/data_plane.py 的 Plane.series(code, source_used, entity_id=…)
+  <workspace>/dashboards/data_plane.py 的 Plane.series(code, source_used, entity_id=…)
   与 Plane.date_range(code, source_used, entity_id=…)；DSN 只读环境变量 FD_OPEN_DATA_DSN，
   SQL 面 = semantic_observations ⋈ concepts，source_used 必须钉死
   通道 A（柏讯服务端数据面，经 wire 入口计量）—— 本包只用它读非价格序列：
@@ -103,7 +103,7 @@ description: 柏讯农业成本链 · 价格与成本侧历史读数。当用户
 
 ```python
 import sys
-sys.path.insert(0, "/Users/chengsishi/finddata/dashboards")
+sys.path.insert(0, "<workspace>/dashboards")
 import data_plane
 
 with data_plane.session() as plane:            # 连接只读环境变量 FD_OPEN_DATA_DSN

@@ -166,7 +166,7 @@ claims:
 1. 镜像：`gh run list -R FindDataTechnology/fd-official-web` 看 `image` workflow（tag=commit 7 位短 sha）。
 2. relay：`ssh cheap3 '/usr/local/bin/tcr-relay-sync.sh'`，日志 grep `fd-web/official-web:sha-<tag>` OK。
 3. bump：官网仓 `deploy/k8s/fd-web.yaml` image 行 → 新 sha，推 gitee（ArgoCD 源）。
-4. 滚：生产在官网专用集群（远端主机 `fd-deploy`），**不在**柏讯集群。先 `kubectl config current-context` 确认是 `the vendor`（**该名含空格，写成 `--context "the vendor"` 反而报 does not exist——实测只用裸 kubectl**），再：
+4. 滚：生产在官网专用集群（远端主机 `fd-deploy`），**不在**柏讯集群。先 `kubectl config current-context` 确认目标是出片上下文（**context 名含空格，显式传 `--context` 反而报 does not exist——实测只用裸 kubectl**），再：
    ```bash
    kubectl -n argocd annotate application fd-web argocd.argoproj.io/refresh=hard --overwrite
    kubectl -n fd-web rollout status deploy/official-web
@@ -206,7 +206,7 @@ claims:
 | 字段里出现 `\"…\"` 双引号壳 | frontmatter 解析没剥引号就入库 | 字段值一律裸文本入库 |
 | 页面顶部出现第二块 frontmatter | `body` 字段带了 frontmatter | body 只放正文 |
 | `POST /admin/upload` 405 | Strapi 5 媒体库路由在 `/upload`；`/admin/*` 全是 SPA 兜底 | `POST {BASE}/upload` multipart `files` + admin JWT |
-| 找不到官网部署在哪 | 生产=官网专用集群的 `fd-web/official-web`（NodePort 30442←宿主 nginx←EdgeOne），**不在**柏讯集群 | 用**裸 kubectl**（当前 context `the vendor`，含空格，别加 `--context`）；别名 `fd-deploy`（124.220.7.175，ubuntu） |
+| 找不到官网部署在哪 | 生产=官网专用集群的 `fd-web/official-web`（NodePort 30442←宿主 nginx←EdgeOne），**不在**柏讯集群 | 用**裸 kubectl**（当前 context `the vendor`，含空格，别加 `--context`）；别名 `fd-deploy`（地址内网留存） |
 | `git push` 成功但 image workflow 没跑 | 只推了 gitee | 两个远端都推；`git ls-remote origin main` 对拍 |
 | 公开读 CMS API 403 | 生产未开公开 find（正确姿态） | 走只读 API token（构建侧已配）或 admin JWT |
 | 英文课程页 404 | 英文是默认语言，走**无前缀根路径** | 中文在 `/zh/…`，按语言换路径验 |
