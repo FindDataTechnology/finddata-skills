@@ -9,7 +9,7 @@ description: 柏讯到期结算复盘。当用户要求结算某条已落账的�
   source_license: Apache-2.0（仅适用于上列借鉴点；本稿正文为原生文本）
   adapted_by: 柏讯/谦面 wire-decision-review
   data_binding: 通道 Q（fd-quant 决策账本，不取数、不联网）—— mcp__fd-quant__retrieve_decisions / mcp__fd-quant__settle_decision / mcp__fd-quant__record_decision / mcp__fd-quant__summarize_pack_performance；
-    通道 B（本地 DAAS，不经 wire 入口计量、不入客户账单）—— 结算窗价格与基准序列的唯一取数口：mcp__fd-daas-mcp__daas_list_indicators / mcp__fd-daas-mcp__daas_search_entities / mcp__fd-daas-mcp__daas_get_indicator / mcp__fd-daas-mcp__daas_run_indicator
+    通道 B（本地 DAAS，不经 wire 入口计量、不入客户账单）—— 结算窗价格与基准序列的唯一取数口：mcp__fd-daas-mcp__alerts_list_series（定位日线表）/ mcp__fd-daas-mcp__alerts_get_series_latest（读 date+Close 两列）
   改述说明：账本不取数——标的与基准两条 (日期, 价格) 序列由本技能从通道 B 取来后传入；结算口径（对齐、覆盖、收益与 alpha）以账本返回为准。
 -->
 
@@ -41,8 +41,8 @@ description: 柏讯到期结算复盘。当用户要求结算某条已落账的�
 | 查回已结算历史与教训 | `mcp__fd-quant__retrieve_decisions` | Q |
 | 触发到期结算（签名见 §4） | `mcp__fd-quant__settle_decision` | Q |
 | 核对落账键与行数 / 聚合统计 | `mcp__fd-quant__record_decision`（仅核对既有键，不用于补记）/ `mcp__fd-quant__summarize_pack_performance` | Q |
-| 确认本地库存指标 / 定位标的 | `mcp__fd-daas-mcp__daas_list_indicators` / `mcp__fd-daas-mcp__daas_search_entities` | B |
-| 读结算窗序列（标的与基准） | `mcp__fd-daas-mcp__daas_get_indicator` / `mcp__fd-daas-mcp__daas_run_indicator` | B |
+| 定位标的/基准在通道 B 的日线表 | `mcp__fd-daas-mcp__alerts_list_series` / `mcp__fd-daas-mcp__daas_list_source_tables` | B |
+| 读结算窗序列（标的与基准） | `mcp__fd-daas-mcp__alerts_get_series_latest`（唯一回 (日期, 价格) 两列的工具） | B |
 
 **账本不取数**：`settle_decision` 的四个序列参数全部由你从通道 B 取来后传入；账本也不内置交易日历——**交易日历由传入序列的日期集合隐式给出**（两边都有价的日子才算交易日）。
 ---
@@ -56,7 +56,7 @@ description: 柏讯到期结算复盘。当用户要求结算某条已落账的�
 
 ## §3 取结算窗序列（通道 B，价格类取数的唯一出口）
 
-**规则**：对每条待结算记录，取**两条**序列：标的的价格序列与基准的价格序列。① 用 `mcp__fd-daas-mcp__daas_search_entities` 定位标的在本地库的条目，用 `mcp__fd-daas-mcp__daas_list_indicators` 确认存在可用的收盘价类指标，再用 `mcp__fd-daas-mcp__daas_get_indicator` / `mcp__fd-daas-mcp__daas_run_indicator` 读出**日期 + 收盘价**两列，记录**指标名 + 工具名 + 取数日期**。② 基准序列同样走通道 B，**基准怎么定**（账本口径，结果带 `benchmark_mapping` 说明来源，可审计）：**显式传入 `benchmark_symbol` 永远优先**，此时 `benchmark_mapping="explicit"`；否则按**市场后缀映射**——`.SS`→`000001.SS`（上证综指）、`.SZ`→`399001.SZ`（深证成指）、`.HK`→`^HSI`（恒生指数）、`.T`→`^N225`、**无后缀→`SPY`**。**输出时必须报出 `benchmark_symbol` 与 `benchmark_mapping`**：不写清基准是什么，"跑赢/跑输"这句话就没有主语。③ **序列形状**：两条都是等长的 (ISO 日期, 价格) 对，**日期严格递增**；缺失价格传 `null`，**不得**用插值、前值填充或估计值补位（账本会点名缺失日期拒绝）；**不得传入晚于本次 `as_of` 的价格点**——账本会拒绝并点名首个越界日期（不静默截断）。④ **序列取不到时**：如实声明该条记录结算受阻及原因，**不给出任何 alpha 数值**。
+**规则**：对每条待结算记录，取**两条**序列：标的的价格序列与基准的价格序列。① **定位**：用 `mcp__fd-daas-mcp__alerts_list_series`（或 `daas_list_source_tables`）找到该标的的日线表——A 股表名形如 `scraw_<6位代码>_daily`（如 `scraw_600519_daily`），列为 `date` / `Open` / `High` / `Low` / `Close` / `Volume`。**读序列**：`mcp__fd-daas-mcp__alerts_get_series_latest(source_table="scraw_600519_daily", date_column="date", value_column="Close", limit=N)`，回的是 **date 降序**的 (日期, 收盘价)；`limit` 必须给到足以覆盖本次入场日（持有期 5 个交易日至少留足缓冲；结算窗越早，`limit` 越大），拿到后自己**翻成升序**再传账本，并记录**表名 + 工具名 + 取数日期**。**三个不要**：`daas_search_entities` 不带 `entity_type` 时**无条件返回空**、且 A 股代码不在其实体主表里；`daas_get_indicator` 回的是**指标规则定义**（rule / name / source_table / date_column / value_column / op），不是序列；`daas_run_indicator` 是**全量重算并 upsert**，只回 `rows_written`。`daas_list_indicators` 是全量指标清单，只能用来确认某条**计算型**指标（如 `600519_ma5`）是否存在。② 基准序列同样走通道 B，**基准怎么定**（账本口径，结果带 `benchmark_mapping` 说明来源，可审计）：**显式传入 `benchmark_symbol` 永远优先**，此时 `benchmark_mapping="explicit"`；否则按**市场后缀映射**——`.SS`→`000001.SS`（上证综指）、`.SZ`→`399001.SZ`（深证成指）、`.HK`→`^HSI`（恒生指数）、`.T`→`^N225`、**无后缀→`SPY`**。**.SZ / .HK / .T 三条映射与「无后缀→SPY」当前在通道 B 兑现不了**（线上只有 14 张 A 股表：12 只个股 + `scraw_000300_daily` 沪深300 + `scraw_000905_daily` 中证500；`scraw_399001_daily` / `scraw_hsi_daily` / `scraw_n225_daily` / `scraw_spy_daily` 都不存在）。**A 股组合必须显式传 `benchmark_symbol`**：沪深300 `000300.SS`（表 `scraw_000300_daily`）或中证500 `000905.SS`（表 `scraw_000905_daily`），上证综指 `000001.SS`（表 `scraw_000001_daily`）。裸 A 股代码（`600519`）会落到「无后缀→SPY」这条兜底并取不到序列——这是映射的默认行为，不是数据缺失。**输出时必须报出 `benchmark_symbol` 与 `benchmark_mapping`**：不写清基准是什么，"跑赢/跑输"这句话就没有主语。③ **序列形状**：两条都是等长的 (ISO 日期, 价格) 对，**日期严格递增**；缺失价格传 `null`，**不得**用插值、前值填充或估计值补位（账本会点名缺失日期拒绝）；**不得传入晚于本次 `as_of` 的价格点**——账本会拒绝并点名首个越界日期（不静默截断）。④ **序列取不到时**：如实声明该条记录结算受阻及原因，**不给出任何 alpha 数值**。
 
 ---
 
